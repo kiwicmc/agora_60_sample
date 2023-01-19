@@ -16,13 +16,14 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  String channelName = "testChannel";
-  String token = "007eJxTYFg38U2xcM+ze0u/N+16rfM612Em159Fp/2czpU2Zf6cqf1XgSEt1SQlNc3czDzFxNDELMXE0sjMzNzYNMUyOdXY3MTYaOvCackNgYwM18QeMzEyQCCIz81Qklpc4pyRmJeXmsPAAACEfiYU";
+  String channelName = "chrisChannel";
+  String token = "007eJxTYJjxsvpBd7LxlADl0Mq7F+JluTlTrkyYwGSptuyCxKNpp7wUGNJSTVJS08zNzFNMDE3MUkwsjczMzI1NUyyTU43NTYyNBC7tSW4IZGR44dbPzMgAgSA+N0NJanGJc0ZiXl5qDgMDAAGPIYs="; // Token expires on January 11, 2023 2:48 AM UTC
 
   int uid = 0; // uid of the local user
 
   int? _remoteUid; // uid of the remote user
   bool _isJoined = false; // Indicates if the local user has joined the channel
+  bool _initedRtcEngine = false;
   late RtcEngine agoraEngine; // Agora engine instance
 
   final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey
@@ -58,6 +59,13 @@ class _MyAppState extends State<MyApp> {
                 children: <Widget>[
                   Expanded(
                     child: ElevatedButton(
+                      onPressed: _isJoined ? null : () => {preview()},
+                      child: const Text("Preview"),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
                       onPressed: _isJoined ? null : () => {join()},
                       child: const Text("Join"),
                     ),
@@ -79,7 +87,8 @@ class _MyAppState extends State<MyApp> {
 
 // Display local video preview
   Widget _localPreview() {
-    if (_isJoined) {
+    debugPrint("_initedRtcEngine=$_initedRtcEngine, _isJoined=$_isJoined");
+    if (_initedRtcEngine || _isJoined) {
       return AgoraVideoView(
         controller: VideoViewController(
           rtcEngine: agoraEngine,
@@ -116,9 +125,9 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void initState() {
+    setupVideoSDKEngine();
     super.initState();
     // Set up an instance of Agora engine
-    setupVideoSDKEngine();
   }
 
   Future<void> setupVideoSDKEngine() async {
@@ -137,31 +146,38 @@ class _MyAppState extends State<MyApp> {
     agoraEngine.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-          showMessage("Local user uid:${connection.localUid} joined the channel");
+          showMessage("Local user uid:${connection.localUid} joined the channel ${connection.channelId}");
           setState(() {
             _isJoined = true;
           });
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-          showMessage("Remote user uid:$remoteUid joined the channel");
+          showMessage("Remote user uid:$remoteUid joined the channel ${connection.channelId}");
           setState(() {
             _remoteUid = remoteUid;
           });
         },
         onUserOffline: (RtcConnection connection, int remoteUid,
             UserOfflineReasonType reason) {
-          showMessage("Remote user uid:$remoteUid left the channel");
+          showMessage("Remote user uid:$remoteUid left the channel ${connection.channelId}");
           setState(() {
             _remoteUid = null;
           });
         },
       ),
     );
+
+  }
+
+  void  preview() async {
+    await agoraEngine.startPreview();
+
+    setState(() {
+      _initedRtcEngine = true;
+    });
   }
 
   void  join() async {
-    await agoraEngine.startPreview();
-
     // Set channel options including the client role and channel profile
     ChannelMediaOptions options = const ChannelMediaOptions(
       clientRoleType: ClientRoleType.clientRoleBroadcaster,
@@ -176,12 +192,29 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
+  void  joinAsAudience() async {
+    // Set channel options including the client role and channel profile
+    ChannelMediaOptions options = const ChannelMediaOptions(
+      clientRoleType: ClientRoleType.clientRoleAudience,
+      channelProfile: ChannelProfileType.channelProfileCommunication,
+    );
+
+    await agoraEngine.joinChannel(
+      token: token,
+      channelId: channelName,
+      options: options,
+      uid: uid,
+    );
+  }
+
+
   void leave() {
     setState(() {
       _isJoined = false;
       _remoteUid = null;
     });
     agoraEngine.leaveChannel();
+    agoraEngine.stopPreview();
   }
 
   // Clean up the resources when you leave
